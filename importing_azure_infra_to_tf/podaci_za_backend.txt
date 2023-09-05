@@ -1,3 +1,0 @@
-
-storage_account_name = "tfstate9sebn"
-storage_container_name = "tfstate"
