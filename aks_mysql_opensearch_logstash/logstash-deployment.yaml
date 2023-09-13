@@ -1,0 +1,106 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: logstash-configmap
+  namespace: default
+data:
+  logstash.yml: |
+    http.host: "0.0.0.0"
+    path.config: /usr/share/logstash/pipeline
+  logstash.conf: |
+    # all input will come from filebeat, no local logs
+    # input{
+    #   beats {
+    #     port => 5044
+    #     }
+    #     }
+    # output {}
+    input {
+      jdbc {
+        jdbc_connection_string => "jdbc:mysql://10.0.46.129:3306/es_db"
+        jdbc_user => "root"
+        jdbc_password => "password123!"
+        jdbc_driver_library => "/tmp/mysql-connector-j-8.1.0.jar"
+        jdbc_driver_class => "com.mysql.jdbc.Driver"
+        statement => "SELECT *, UNIX_TIMESTAMP(modification_time) AS unix_ts_in_secs FROM es_table"
+        tracking_column => "unix_ts_in_secs"
+        tracking_column_type => "numeric"
+        use_column_value => true
+        # last_run_metadata_path => "./Log/.logstash_jdbc_last_run"
+        schedule => "*/30 * * * * *"
+      }
+    }
+    output {
+        opensearch {
+            hosts => [ "https://opensearch-cluster-master:9200" ]
+            index => "sqlindex"
+            user => "admin"
+            password => "admin"
+            doc_as_upsert => true
+            document_id => "%{id}"
+            ssl => false
+            ssl_certificate_verification => false           
+        }
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: logstash-deployment
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: logstash
+  template:
+    metadata:
+      labels:
+        app: logstash
+    spec:
+      containers:
+      - name: logstash
+        image: opensearchproject/logstash-oss-with-opensearch-output-plugin:latest
+        ports:
+        - containerPort: 5044
+        volumeMounts:
+          - name: azure
+            mountPath: /tmp
+          - name: config-volume
+            mountPath: /usr/share/logstash/config
+          - name: logstash-pipeline-volume
+            mountPath: /usr/share/logstash/pipeline
+        securityContext:
+          allowPrivilegeEscalation: false
+          runAsUser: 0
+      volumes:
+      - name: azure
+        persistentVolumeClaim:
+          claimName: my-azurefile
+      - name: config-volume
+        configMap:
+          name: logstash-configmap
+          items:
+            - key: logstash.yml
+              path: logstash.yml
+      - name: logstash-pipeline-volume
+        configMap:
+          name: logstash-configmap
+          items:
+            - key: logstash.conf
+              path: logstash.conf
+    
+---
+kind: Service
+apiVersion: v1
+metadata:
+  name: logstash-service
+  namespace: default
+spec:
+  selector:
+    app: logstash
+  ports:
+  - protocol: TCP
+    port: 5044
+    targetPort: 5044
+  type: ClusterIP
