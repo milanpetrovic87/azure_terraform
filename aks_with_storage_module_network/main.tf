@@ -24,12 +24,20 @@ resource "azurerm_resource_group" "rgmpetrovic" {
   tags     = var.tags
 }
 
+resource "azurerm_container_registry" "acr" {
+  name                = var.acr_name
+  resource_group_name = azurerm_resource_group.rgmpetrovic.name
+  location            = azurerm_resource_group.rgmpetrovic.location
+  sku                 = "Standard"
+  admin_enabled       = false
+}
+
 resource "azurerm_kubernetes_cluster" "cluster" {
   name                = var.cluster_name
   location            = var.location
   resource_group_name = azurerm_resource_group.rgmpetrovic.name
   dns_prefix          = var.cluster_name
-  depends_on = [ azurerm_resource_group.rgmpetrovic ]
+  depends_on          = [azurerm_resource_group.rgmpetrovic]
 
 
   default_node_pool {
@@ -56,9 +64,15 @@ resource "azurerm_kubernetes_cluster" "cluster" {
 }
 
 module "Storageaccount" {
-    source = "./Storageaccount"
-    #base_name = "TerraformExample01"
-    resource_group_name = var.resourcegroup_name
-    location = var.location
+  source = "./Storageaccount"
+  #base_name = "TerraformExample01"
+  resource_group_name = var.resourcegroup_name
+  location            = var.location
 }
 
+# add the role to the aks system identity 
+resource "azurerm_role_assignment" "aks_to_acr" {
+  scope                = azurerm_container_registry.acr.id
+  role_definition_name = "AcrPull"
+  principal_id         = azurerm_kubernetes_cluster.cluster.kubelet_identity[0].object_id
+}

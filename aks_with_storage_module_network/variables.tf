@@ -55,3 +55,9 @@ variable "secret_permissions" {
   description = "List of secret permissions."
   default     = ["Set"]
 }
+
+variable "acr_name" {
+  type        = string
+  description = "Name of ACR registry"
+  default     = "acrforimages"
+}
