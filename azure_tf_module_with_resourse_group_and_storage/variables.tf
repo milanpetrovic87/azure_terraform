@@ -46,7 +46,7 @@ variable "key_permissions" {
 variable "secret_permissions" {
   type        = list(string)
   description = "List of secret permissions."
-  default     = ["Set"]
+  default     = ["Set", "List", "Get", "Delete"]
 }
 
 variable "acr_name" {
