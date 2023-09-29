@@ -1,7 +1,7 @@
 terraform {
   required_providers {
     azurerm = {
-      source = "hashicorp/azurerm"
+      source  = "hashicorp/azurerm"
       version = "3.71.0"
     }
   }
@@ -14,23 +14,23 @@ provider "azurerm" {
 }
 
 module "ResourceGroup" {
-  source = "./ResourceGroup"
+  source    = "./ResourceGroup"
   base_name = "AKS"
-  location = var.location
+  location  = var.location
 }
 
 module "Storageaccount" {
-  source = "./StorageAccount"
-  base_name = "STG"
+  source              = "./StorageAccount"
+  base_name           = "STG"
   resource_group_name = module.ResourceGroup.rg_name_out
-  location = var.location
+  location            = var.location
 }
 
 resource "azurerm_storage_container" "tfstate" {
   name                  = "tfstate"
   storage_account_name  = module.Storageaccount.stg_act_name_out
   container_access_type = "blob"
-  depends_on = [ module.ResourceGroup, module.Storageaccount ]
+  depends_on            = [module.ResourceGroup, module.Storageaccount]
 }
 
 resource "azurerm_kubernetes_cluster" "cluster" {
@@ -78,8 +78,35 @@ resource "azurerm_container_registry" "acr" {
 
 # add the role to the aks system identity 
 resource "azurerm_role_assignment" "aks_to_acr" {
-  scope               = azurerm_container_registry.acr.id
+  scope                = azurerm_container_registry.acr.id
   role_definition_name = "AcrPull"
   principal_id         = azurerm_kubernetes_cluster.cluster.kubelet_identity[0].object_id
- }
+}
 
+data "azurerm_client_config" "current" {}
+
+
+resource "azurerm_key_vault" "keyvault" {
+  name                       = var.keyvault_name
+  location                   = var.location
+  resource_group_name        = module.ResourceGroup.rg_name_out
+  tenant_id                  = data.azurerm_client_config.current.tenant_id
+  sku_name                   = var.sku_name
+  soft_delete_retention_days = 7
+  depends_on                 = [module.ResourceGroup.rg_name_out]
+
+  access_policy {
+    tenant_id = data.azurerm_client_config.current.tenant_id
+    object_id = data.azurerm_client_config.current.object_id
+
+    key_permissions    = var.key_permissions
+    secret_permissions = var.secret_permissions
+
+  }
+}
+
+resource "azurerm_key_vault_secret" "sa" {
+  name         = "saname1"
+  value        = "tamopsstorage1"
+  key_vault_id = azurerm_key_vault.keyvault.id
+}
